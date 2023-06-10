@@ -1,7 +1,7 @@
 use std::fs;
 
 fn main() {
-    let poll_file: String = "data\\2023-06-09 Next Campaign Poll 5.csv".to_owned(); // CSV export from google forms
+    let poll_file: String = "example polls\\example poll.csv".to_owned(); // CSV export from google forms
     let terrain_voting_index_in_file = 2; // 0th datetime, 1st being discordname, etc
 
     // Must be in order as shown in poll
