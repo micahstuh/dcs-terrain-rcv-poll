@@ -45,7 +45,10 @@ fn main() {
             }
         } else {
             // Hussah, a terrain has a majority of primary votes!
-            println!("  Winner by Majority:\n      {}\n", terrains[majority_result as usize]);
+            println!(
+                "  Winner by Majority:\n      {}\n",
+                terrains[majority_result as usize]
+            );
             winner_found = true;
         }
         round_index += 1;
