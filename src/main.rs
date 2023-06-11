@@ -45,7 +45,7 @@ fn main() {
             }
         } else {
             // Hussah, a terrain has a majority of primary votes!
-            println!("  Winner: {}", terrains[majority_result as usize]);
+            println!("  Winner by Majority:\n      {}\n", terrains[majority_result as usize]);
             winner_found = true;
         }
         round_index += 1;
@@ -128,7 +128,9 @@ pub fn check_for_majority(numeric_entries: &Vec<Vec<i32>>) -> i32 {
     let most_primary_votes_index = get_index_of_maximum(&primary_indices);
     let most_primary_votes = primary_indices.iter().max().unwrap();
 
-    if (most_primary_votes / numeric_entries.len() as i32) as f32 > 0.5 {
+    let leader_vote_percentage: f32 = *most_primary_votes as f32 / numeric_entries.len() as f32;
+
+    if leader_vote_percentage > 0.5 {
         return most_primary_votes_index as i32;
     } else {
         return -1;
