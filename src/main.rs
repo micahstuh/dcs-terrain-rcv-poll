@@ -1,7 +1,21 @@
 use std::fs;
+use rfd::FileDialog;
 
 fn main() {
-    let poll_file: String = "example polls\\example poll.csv".to_owned(); // CSV export from google forms
+
+    let files = FileDialog::new()
+    .add_filter("Google Form CSV Export", &["csv"])
+    .set_directory("example polls")
+    .pick_file();
+
+    let poll_file: String;
+    if let Some(file) = files {
+        poll_file = file.to_str().unwrap().to_owned();
+    } else {
+        print!("Selection Not Valid!");
+        return;
+    }
+
     let terrain_voting_index_in_file = 2; // 0th datetime, 1st being discordname, etc
 
     // Must be in order as shown in poll
