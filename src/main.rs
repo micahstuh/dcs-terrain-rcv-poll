@@ -67,6 +67,9 @@ fn main() {
         }
         round_index += 1;
     }
+    if !winner_found {
+        println!("  Results are tied. No Winner!");
+    }
 }
 
 /// Convert a Google Form's CSV output to a manageable numeric entries list.
@@ -251,6 +254,9 @@ pub fn remove_last_place_terrain(
             terrains.remove(terrain_index as usize);
             primary_indices.remove(terrain_index as usize);
             tied_losers.remove(0);
+            for i in 0..tied_losers.len() {
+                tied_losers[i] -= 1;
+            }
             terrain_index -= 1;
         }
         terrain_index += 1;
