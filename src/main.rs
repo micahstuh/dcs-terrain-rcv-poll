@@ -30,7 +30,6 @@ fn main() {
     ]);
 
     // First index is a member's entry, 2nd index is their vote score per terrain
-    // In Hindsight, should have made 1 most preferred and 7 least preferred
     let mut numeric_entries = import_numeric_entries(
         &poll_file,
         terrains.len() as i32,
@@ -141,8 +140,8 @@ pub fn check_for_majority(numeric_entries: &Vec<Vec<i32>>) -> i32 {
     }
 
     for entry in numeric_entries {
-        let max_index = get_index_of_maximum(entry);
-        primary_indices[max_index] += 1;
+        let min_index = get_index_of_minimum(entry);
+        primary_indices[min_index] += 1;
     }
 
     let most_primary_votes_index = get_index_of_maximum(&primary_indices);
@@ -180,10 +179,10 @@ pub fn get_index_of_maximum(vector: &Vec<i32>) -> usize {
 ///
 /// * `vector` - The vector to search.
 pub fn get_index_of_minimum(vector: &Vec<i32>) -> usize {
-    let mut min_value: i32 = 0;
+    let mut min_value: i32 = i32::MAX;
     let mut min_index: usize = 0;
     for idx in 0..vector.len() {
-        if vector[idx] > min_value {
+        if vector[idx] < min_value {
             min_value = vector[idx];
             min_index = idx;
         }
@@ -210,8 +209,8 @@ pub fn remove_last_place_terrain(
 
     // Tally up the primary votes for each terrain
     for entry in &mut *numeric_entries {
-        let max_index = get_index_of_maximum(&entry);
-        primary_indices[max_index] += 1;
+        let min_index = get_index_of_minimum(&entry);
+        primary_indices[min_index] += 1;
     }
 
     // Get the value of fewest primary votes amongst the terrains.
@@ -283,14 +282,13 @@ pub fn loser_tie_breaker(
     // Go by rounds until only one loser exists.
     // Each round corresponds to a vote tier. 0th round is primary vote, 1st round is secondary, 2nd round is tertiary, etc.
     let mut round: i32 = 1;
-    let terrain_count: i32 = numeric_entries[0].len() as i32;
     while round < numeric_entries[0].len() as i32 && tied_terrain_indicies.len() > 1 {
         println!("      Tiebreaker Round {}:", round);
         let mut vote_tallies: Vec<i32> = Vec::new();
         for idx in 0..tied_terrain_indicies.len() {
             vote_tallies.push(0);
             for entry in numeric_entries {
-                if entry[tied_terrain_indicies[idx]] == terrain_count - round {
+                if entry[tied_terrain_indicies[idx]] == round + 1 {
                     vote_tallies[idx] += 1;
                 }
             }
@@ -327,7 +325,7 @@ pub fn show_tallies(terrains: &Vec<&str>, numeric_entries: &Vec<Vec<i32>>) {
     for terrain_index in 0..terrains.len() {
         let mut primary_votes: i32 = 0;
         for entry in numeric_entries {
-            if entry[terrain_index] == terrains.len() as i32 {
+            if entry[terrain_index] == 1 {
                 primary_votes += 1;
             }
         }
