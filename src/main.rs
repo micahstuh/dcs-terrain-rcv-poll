@@ -21,12 +21,13 @@ fn main() {
     // Must be in order as shown in poll
     let mut terrains: Vec<&str> = Vec::from([
         "Caucasus",
+        "Kola",
         "Marianas",
         "Nevada",
         "Persian Gulf",
+        "Sinai",
         "South Atlantic",
         "Syria",
-        "Senai",
     ]);
 
     // First index is a member's entry, 2nd index is their vote score per terrain
