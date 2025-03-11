@@ -23,11 +23,13 @@ fn main() {
         "Caucasus",
         "Kola",
         "Marianas",
-        "Nevada",
+        "NTTR",
         "Persian Gulf",
         "Sinai",
         "South Atlantic",
+        "Afghanistan",
         "Syria",
+        "Iraq",
     ]);
 
     // First index is a member's entry, 2nd index is their vote score per terrain
@@ -42,7 +44,6 @@ fn main() {
     let mut winner_found: bool = false;
     while !winner_found && terrains.len() > 0 {
         println!("\nRound {}:", round_index);
-
         // Print the current primary votes for the current round.
         show_tallies(&terrains, &numeric_entries);
 
@@ -107,7 +108,7 @@ pub fn import_numeric_entries(
             let answer = answers.next().unwrap().to_owned().replace('"', "");
             let mut vote_value: i32 = 0;
             if answer.len() > 1 {
-                if answer.contains("1") {
+                if answer.contains("1") && !answer.contains("0"){
                     vote_value = 1;
                 } else if answer.contains(&terrain_count.to_string()) {
                     vote_value = terrain_count;
