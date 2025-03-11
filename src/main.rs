@@ -106,18 +106,7 @@ pub fn import_numeric_entries(
         // For each terrain entry, record the score given.
         for _ in 0..terrain_count {
             let answer = answers.next().unwrap().to_owned().replace('"', "");
-            let mut vote_value: i32 = 0;
-            if answer.len() > 1 {
-                // Space is important incase more than 9 terrains are present
-                // so to not regiester a "10" - "19" as a vote
-                if answer.contains("1 "){
-                    vote_value = 1;
-                } else if answer.contains(&terrain_count.to_string()) {
-                    vote_value = terrain_count;
-                }
-            } else {
-                vote_value = answer.parse().unwrap();
-            }
+            let vote_value: i32 = extract_number(&answer);
             numeric_entry.push(vote_value);
         }
         numeric_entries.push(numeric_entry);
@@ -318,7 +307,7 @@ pub fn loser_tie_breaker(
     }
 }
 
-/// Prints the priamry tallies from the numeric entries list.
+/// Prints the primary tallies from the numeric entries list.
 ///
 ///  # Arguments
 ///
@@ -335,4 +324,19 @@ pub fn show_tallies(terrains: &Vec<&str>, numeric_entries: &Vec<Vec<i32>>) {
         }
         println!("      {}: {}", terrains[terrain_index], primary_votes);
     }
+}
+
+/// Extracts the number from a string.
+///
+/// # Arguments
+/// 
+/// * `entry` - The string to extract the number from.
+pub fn extract_number(entry: &str) -> i32 {
+    let mut number = String::new();
+    for c in entry.chars() {
+        if c.is_numeric() {
+            number.push(c);
+        }
+    }
+    return number.parse().unwrap();
 }
