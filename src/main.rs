@@ -108,7 +108,9 @@ pub fn import_numeric_entries(
             let answer = answers.next().unwrap().to_owned().replace('"', "");
             let mut vote_value: i32 = 0;
             if answer.len() > 1 {
-                if answer.contains("1") && !answer.contains("0"){
+                // Space is important incase more than 9 terrains are present
+                // so to not regiester a "10" - "19" as a vote
+                if answer.contains("1 "){
                     vote_value = 1;
                 } else if answer.contains(&terrain_count.to_string()) {
                     vote_value = terrain_count;
