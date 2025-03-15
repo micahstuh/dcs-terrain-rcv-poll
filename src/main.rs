@@ -55,6 +55,15 @@ fn main() {
     }
 }
 
+/// Imports a CSV poll file and returns a list of voters.
+///
+/// # Arguments
+///
+/// * `file_path` - The path to the CSV file.
+///
+/// # Returns
+///
+/// A list of voters from the CSV file.
 pub fn import_csv_poll(file_path: &str) -> Result<Vec<Voter>, String> {
     let file = File::open(file_path).expect("Error");
     let mut reader = csv::Reader::from_reader(file);
@@ -114,16 +123,15 @@ pub fn import_csv_poll(file_path: &str) -> Result<Vec<Voter>, String> {
     return Ok(voters);
 }
 
-/// Check the numeric entries for a majority winner of primary votes.
+/// Checks if a candidate has a majority of primary votes.
 ///
 ///  # Arguments
 ///
-/// * `numeric_entries` - The list of poll entries.
+/// * `voters` - The list of voters to check for a majority winner.
 ///
 /// # Returns
 ///
-/// The index of the majority winner, otherwise -1 if
-/// no majoriy winner exists.
+/// The candidate with a majority of primary votes, or None if no candidate has a majority.
 pub fn check_for_majority(voters: &Vec<Voter>) -> Option<Rc<Candidate>> {
     let candidate_tallies = get_candidate_tallies(&voters);
 
@@ -142,13 +150,15 @@ pub fn check_for_majority(voters: &Vec<Voter>) -> Option<Rc<Candidate>> {
     }
 }
 
-/// Removes the losing candidates from the candidates list and the votes for it
-/// from the numeric entries list. Returns a vector of removed candidates.
+/// Removes the losing candidates from the candidates list.
 ///
 ///  # Arguments
 ///
-/// * `candidates` - The list of remaining candidates.
-/// * `numeric_entries` - The list of poll entries.
+/// * `voters` - The list of voters to remove the last place candidate from.
+///
+/// # Returns
+///
+/// A vector of removed candidates.
 pub fn remove_last_place_candidate(voters: &mut Vec<Voter>) -> Vec<Rc<Candidate>> {
     let candidate_tallies = get_candidate_tallies(voters);
     let min_votes = candidate_tallies.iter().map(|x| x.1[0]).min().unwrap();
@@ -169,6 +179,7 @@ pub fn remove_last_place_candidate(voters: &mut Vec<Voter>) -> Vec<Rc<Candidate>
         loser_tie_breaker(&mut tied_losers);
     }
 
+    // Remove the losing candidates from the voters' tallies.
     for (candidate, _) in &tied_losers {
         for voter in &mut *voters {
             voter.votes.retain(|x| x != candidate);
@@ -185,9 +196,7 @@ pub fn remove_last_place_candidate(voters: &mut Vec<Voter>) -> Vec<Rc<Candidate>
 ///
 ///  # Arguments
 ///
-/// * `candidates` - The list of remaining candidates.
-/// * `tied_candidate_indicies` - The indicies of the tied loser candidates in the candidates list.
-/// * `numeric_entries` - The list of poll entries.
+/// * `candidate_tallies` - The list of candidates and their tallies.
 pub fn loser_tie_breaker(candidate_tallies: &mut Vec<(Rc<Candidate>, Vec<i32>)>) {
     // In the event of a tie, find which has the fewest 2nd picks. If 2nd picks are a tie, go by 3rd pick, and so on.
 
@@ -213,12 +222,11 @@ pub fn loser_tie_breaker(candidate_tallies: &mut Vec<(Rc<Candidate>, Vec<i32>)>)
     }
 }
 
-/// Prints the primary tallies from the numeric entries list.
+/// Prints the primary tallies for each candidate.
 ///
 ///  # Arguments
 ///
-/// * `candidates` - The list of remaining candidates.
-/// * `numeric_entries` - The list of poll entries.
+/// * `voters` - The list of voters to print the tallies from.
 pub fn show_tallies(voters: &Vec<Voter>) {
     println!("  Primary Vote Tallies:");
     let candidate_tallies = get_candidate_tallies(&voters);
@@ -227,6 +235,15 @@ pub fn show_tallies(voters: &Vec<Voter>) {
     }
 }
 
+/// Get the tallies for each candidate from the list of voters.
+///
+/// # Arguments
+///
+/// * `voters` - The list of voters to get the tallies from.
+///
+/// # Returns
+///
+/// A vector of tuples containing the candidate and their tallies.
 pub fn get_candidate_tallies(voters: &Vec<Voter>) -> Vec<(Rc<Candidate>, Vec<i32>)> {
     let mut candidate_tallies: Vec<(Rc<Candidate>, Vec<i32>)> = Vec::new();
 
@@ -253,6 +270,10 @@ pub fn get_candidate_tallies(voters: &Vec<Voter>) -> Vec<(Rc<Candidate>, Vec<i32
 /// # Arguments
 ///
 /// * `entry` - The string to extract the number from.
+///
+/// # Returns
+///
+/// The number extracted from the string.
 pub fn extract_number(entry: &str) -> i32 {
     let mut number = String::new();
     for c in entry.chars() {
