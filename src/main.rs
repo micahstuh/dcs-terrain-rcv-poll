@@ -1,12 +1,16 @@
-use std::fs;
+use candidate::Candidate;
 use rfd::FileDialog;
+use std::{fs::File, rc::Rc};
+use voter::Voter;
+
+mod candidate;
+mod voter;
 
 fn main() {
-
     let files = FileDialog::new()
-    .add_filter("Google Form CSV Export", &["csv"])
-    .set_directory("example polls")
-    .pick_file();
+        .add_filter("Google Form CSV Export", &["csv"])
+        .set_directory("example polls")
+        .pick_file();
 
     let poll_file: String;
     if let Some(file) = files {
@@ -16,55 +20,33 @@ fn main() {
         return;
     }
 
-    let terrain_voting_index_in_file = 2; // 0th datetime, 1st being discordname, etc
-
-    // Must be in order as shown in poll
-    let mut terrains: Vec<&str> = Vec::from([
-        "Caucasus",
-        "Kola",
-        "Marianas",
-        "NTTR",
-        "Persian Gulf",
-        "Sinai",
-        "South Atlantic",
-        "Afghanistan",
-        "Syria",
-        "Iraq",
-    ]);
-
-    // First index is a member's entry, 2nd index is their vote score per terrain
-    let mut numeric_entries = import_numeric_entries(
-        &poll_file,
-        terrains.len() as i32,
-        terrain_voting_index_in_file,
-    );
-
+    let mut voters = import_csv_poll(&poll_file).expect("Could not import poll");
+    let mut winner_found = false;
     // Perform a runoff eliminations until a majority winner is found
     let mut round_index: i32 = 1;
-    let mut winner_found: bool = false;
-    while !winner_found && terrains.len() > 0 {
+    while !winner_found && voters[0].votes.len() > 0 {
         println!("\nRound {}:", round_index);
         // Print the current primary votes for the current round.
-        show_tallies(&terrains, &numeric_entries);
+        show_tallies(&voters);
 
-        // Check if a terrain has a majority of primary votes.
-        let majority_result = check_for_majority(&numeric_entries);
+        // Check if a candidate has a majority of primary votes.
+        let majority_result = check_for_majority(&voters);
 
-        if majority_result == -1 {
-            // No terrain has a majority vote, eliminate the terrain with the fewest primary votes.
+        if majority_result == None {
+            // No candidate has a majority vote, eliminate the candidate with the fewest primary votes.
             println!("  No Majority Winner,");
-            let removed_terrains = remove_last_place_terrain(&mut terrains, &mut numeric_entries);
-            println!("  Removing Last Place Terrains:");
-            for terrain in removed_terrains {
-                println!("      {}", terrain);
+            let removed_candidates = remove_last_place_candidate(&mut voters);
+            println!("  Removing Last Place Candidates:");
+            for candidate in removed_candidates {
+                println!("      {}", candidate.name);
             }
         } else {
-            // Hussah, a terrain has a majority of primary votes!
+            // Hussah, a candidate has a majority of primary votes!
+            winner_found = true;
             println!(
                 "  Winner by Majority:\n      {}\n",
-                terrains[majority_result as usize]
+                majority_result.unwrap().name
             );
-            winner_found = true;
         }
         round_index += 1;
     }
@@ -73,46 +55,63 @@ fn main() {
     }
 }
 
-/// Convert a Google Form's CSV output to a manageable numeric entries list.
-///
-///  # Arguments
-///
-/// * `poll_file` - The filepath to the CSV file to be imported.
-/// * `terrain_count` - The number of terrains to expect per entry in the CSV file.
-/// * `voting_index` - The answer index of the first terrain per entry in the CSV file.
-///
-/// # Returns
-/// The list of poll entries.
-pub fn import_numeric_entries(
-    poll_file: &str,
-    terrain_count: i32,
-    voting_index: i32,
-) -> Vec<Vec<i32>> {
-    let mut numeric_entries: Vec<Vec<i32>> = Vec::new(); // First vec represents a person's entry, second vec represents each terrain's score
+pub fn import_csv_poll(file_path: &str) -> Result<Vec<Voter>, String> {
+    let file = File::open(file_path).expect("Error");
+    let mut reader = csv::Reader::from_reader(file);
 
-    let poll_contents = fs::read_to_string(poll_file).expect("Error");
-    let mut poll_entries = poll_contents.split('\n');
-    // Discard the header info
-    poll_entries.next();
+    let header_record = reader.headers().expect("Error").clone();
+    let mut headers = Vec::new();
+    for result in header_record.iter() {
+        let header = result.to_owned();
+        headers.push(header);
+    }
+    headers.remove(0);
+    headers.remove(0);
+    headers.pop();
 
-    // For each entry, tally their votes into a vector
-    for entry in poll_entries {
-        let mut numeric_entry: Vec<i32> = Vec::new();
-        let mut answers = entry.split(',');
+    let mut candidates: Vec<Candidate> = Vec::new();
 
-        // Skip to the terrain entries
-        answers.nth((voting_index - 1) as usize);
-
-        // For each terrain entry, record the score given.
-        for _ in 0..terrain_count {
-            let answer = answers.next().unwrap().to_owned().replace('"', "");
-            let vote_value: i32 = extract_number(&answer);
-            numeric_entry.push(vote_value);
+    // Gather all candidates from the CSV headers
+    for header_string in headers {
+        let split_header: Vec<&str> = header_string.split(|c| c == '[' || c == ']').collect();
+        if split_header.len() > 1 {
+            let candidate = Candidate::new(split_header[1]);
+            candidates.push(candidate);
+        } else {
+            return Err("CSV headers are not formatted correctly".to_string());
         }
-        numeric_entries.push(numeric_entry);
     }
 
-    return numeric_entries;
+    let mut voters: Vec<Voter> = Vec::new();
+
+    for result in reader.records() {
+        let record = result.expect("Error");
+        let mut answers = Vec::new();
+        for answer_string in record.iter() {
+            let answer = answer_string.to_owned();
+            answers.push(answer);
+        }
+        answers.remove(0);
+        answers.pop();
+        let name = answers.remove(0);
+        let mut votes: Vec<i32> = Vec::new();
+        for answer in answers {
+            let vote = extract_number(&answer);
+            votes.push(vote);
+        }
+        let mut candidate_votes: Vec<Rc<Candidate>> = Vec::new();
+        for score in 1..votes.len() + 1 {
+            let index = votes
+                .iter()
+                .position(|&x| x == score as i32)
+                .expect("Candidate not found");
+            candidate_votes.push(Rc::new(candidates[index].clone()));
+        }
+        let voter = Voter::new(name, candidate_votes);
+        voters.push(voter);
+    }
+
+    return Ok(voters);
 }
 
 /// Check the numeric entries for a majority winner of primary votes.
@@ -125,184 +124,91 @@ pub fn import_numeric_entries(
 ///
 /// The index of the majority winner, otherwise -1 if
 /// no majoriy winner exists.
-pub fn check_for_majority(numeric_entries: &Vec<Vec<i32>>) -> i32 {
-    let mut primary_indices: Vec<i32> = Vec::new();
-    let terrain_count = numeric_entries[0].len();
-    for _ in 0..terrain_count {
-        primary_indices.push(0);
-    }
+pub fn check_for_majority(voters: &Vec<Voter>) -> Option<Rc<Candidate>> {
+    let candidate_tallies = get_candidate_tallies(&voters);
 
-    for entry in numeric_entries {
-        let min_index = get_index_of_minimum(entry);
-        primary_indices[min_index] += 1;
-    }
+    let most_primary_votes_index = candidate_tallies
+        .iter()
+        .position(|x| x.1[0] == candidate_tallies.iter().map(|x| x.1[0]).max().unwrap())
+        .unwrap();
+    let most_primary_votes = candidate_tallies[most_primary_votes_index].1[0];
 
-    let most_primary_votes_index = get_index_of_maximum(&primary_indices);
-    let most_primary_votes = primary_indices.iter().max().unwrap();
-
-    let leader_vote_percentage: f32 = *most_primary_votes as f32 / numeric_entries.len() as f32;
+    let leader_vote_percentage: f32 = most_primary_votes as f32 / voters.len() as f32;
 
     if leader_vote_percentage > 0.5 {
-        return most_primary_votes_index as i32;
+        return Some(candidate_tallies[most_primary_votes_index].0.clone());
     } else {
-        return -1;
+        return None;
     }
 }
 
-/// Returns the index of the maximum value in a list.
+/// Removes the losing candidates from the candidates list and the votes for it
+/// from the numeric entries list. Returns a vector of removed candidates.
 ///
 ///  # Arguments
 ///
-/// * `vector` - The vector to search.
-pub fn get_index_of_maximum(vector: &Vec<i32>) -> usize {
-    let mut max_value: i32 = 0;
-    let mut max_index: usize = 0;
-    for idx in 0..vector.len() {
-        if vector[idx] > max_value {
-            max_value = vector[idx];
-            max_index = idx;
-        }
-    }
-    return max_index;
-}
-
-/// Returns the index of the minimum value in a list.
-///
-///  # Arguments
-///
-/// * `vector` - The vector to search.
-pub fn get_index_of_minimum(vector: &Vec<i32>) -> usize {
-    let mut min_value: i32 = i32::MAX;
-    let mut min_index: usize = 0;
-    for idx in 0..vector.len() {
-        if vector[idx] < min_value {
-            min_value = vector[idx];
-            min_index = idx;
-        }
-    }
-    return min_index;
-}
-
-/// Removes the losing terrains from the terrains list and the votes for it
-/// from the numeric entries list. Returns a vector of removed terrains.
-///
-///  # Arguments
-///
-/// * `terrains` - The list of remaining terrains.
+/// * `candidates` - The list of remaining candidates.
 /// * `numeric_entries` - The list of poll entries.
-pub fn remove_last_place_terrain(
-    terrains: &mut Vec<&str>,
-    numeric_entries: &mut Vec<Vec<i32>>,
-) -> Vec<String> {
-    let mut primary_indices: Vec<i32> = Vec::new();
-    let terrain_count = numeric_entries[0].len();
-    for _ in 0..terrain_count {
-        primary_indices.push(0);
-    }
+pub fn remove_last_place_candidate(voters: &mut Vec<Voter>) -> Vec<Rc<Candidate>> {
+    let candidate_tallies = get_candidate_tallies(voters);
+    let min_votes = candidate_tallies.iter().map(|x| x.1[0]).min().unwrap();
 
-    // Tally up the primary votes for each terrain
-    for entry in &mut *numeric_entries {
-        let min_index = get_index_of_minimum(&entry);
-        primary_indices[min_index] += 1;
-    }
+    let mut tied_losers: Vec<(Rc<Candidate>, Vec<i32>)> = Vec::new();
 
-    // Get the value of fewest primary votes amongst the terrains.
-    let least_primary_votes = *primary_indices.iter().min().unwrap();
-    let mut removed_terrains: Vec<String> = Vec::new();
-
-    let mut tied_losers: Vec<usize> = Vec::new();
-
-    // For each terrain, add it to the loser list if it is equal to the fewest
+    // For each candidate, add it to the loser list if it is equal to the fewest
     // number of primary votes received.
-    for terrain_index in 0..terrain_count {
-        if &primary_indices[terrain_index as usize] == &least_primary_votes {
-            tied_losers.push(terrain_index as usize);
+    for (candidate, tallies) in candidate_tallies {
+        if tallies[0] == min_votes {
+            tied_losers.push((candidate, tallies));
         }
     }
 
     // Enter into a loser tiebreaker if more than one loser exists.
     if tied_losers.len() > 1 {
         println!("  Entering Into Loser Tiebraker");
-        loser_tie_breaker(&terrains, &mut tied_losers, &numeric_entries);
+        loser_tie_breaker(&mut tied_losers);
     }
 
-    // For each poll entry, remove the votes for terrains that are going to be deleted.
-    let mut terrain_index: i32 = 0;
-    while terrain_index < terrains.len() as i32 {
-        if tied_losers.contains(&(terrain_index as usize)) {
-            // Any votes above the removed terrain get demoted by -1.
-            for entry in &mut *numeric_entries {
-                let eliminated_terrain_value: i32 = entry[terrain_index as usize];
-                for terrain_vote_index in 0..entry.len() {
-                    if entry[terrain_vote_index] > eliminated_terrain_value {
-                        entry[terrain_vote_index] -= 1;
-                    }
-                }
-                entry.remove(terrain_index as usize);
-            }
-
-            // Remove the index from any vector that corresponds to the loser terrain.
-            removed_terrains.push(terrains[terrain_index as usize].to_owned());
-            terrains.remove(terrain_index as usize);
-            primary_indices.remove(terrain_index as usize);
-            tied_losers.remove(0);
-            for i in 0..tied_losers.len() {
-                tied_losers[i] -= 1;
-            }
-            terrain_index -= 1;
+    for (candidate, _) in &tied_losers {
+        for voter in &mut *voters {
+            voter.votes.retain(|x| x != candidate);
         }
-        terrain_index += 1;
     }
 
-    return removed_terrains;
+    let removed_candidates: Vec<Rc<Candidate>> = tied_losers.iter().map(|x| x.0.clone()).collect();
+
+    return removed_candidates;
 }
 
-/// Finds the terrains with the lowest number of subsequent votes and removes it
-/// from the terrains list.
+/// Finds the candidates with the lowest number of subsequent votes and removes it
+/// from the candidates list.
 ///
 ///  # Arguments
 ///
-/// * `terrains` - The list of remaining terrains.
-/// * `tied_terrain_indicies` - The indicies of the tied loser terrains in the terrains list.
+/// * `candidates` - The list of remaining candidates.
+/// * `tied_candidate_indicies` - The indicies of the tied loser candidates in the candidates list.
 /// * `numeric_entries` - The list of poll entries.
-pub fn loser_tie_breaker(
-    terrains: &Vec<&str>,
-    tied_terrain_indicies: &mut Vec<usize>,
-    numeric_entries: &Vec<Vec<i32>>,
-) {
+pub fn loser_tie_breaker(candidate_tallies: &mut Vec<(Rc<Candidate>, Vec<i32>)>) {
     // In the event of a tie, find which has the fewest 2nd picks. If 2nd picks are a tie, go by 3rd pick, and so on.
 
     // Go by rounds until only one loser exists.
     // Each round corresponds to a vote tier. 0th round is primary vote, 1st round is secondary, 2nd round is tertiary, etc.
     let mut round: i32 = 1;
-    while round < numeric_entries[0].len() as i32 && tied_terrain_indicies.len() > 1 {
+    while round < candidate_tallies[0].1.len() as i32 && candidate_tallies.len() > 1 {
         println!("      Tiebreaker Round {}:", round);
-        let mut vote_tallies: Vec<i32> = Vec::new();
-        for idx in 0..tied_terrain_indicies.len() {
-            vote_tallies.push(0);
-            for entry in numeric_entries {
-                if entry[tied_terrain_indicies[idx]] == round + 1 {
-                    vote_tallies[idx] += 1;
-                }
-            }
+        for i in 0..candidate_tallies.len() {
             println!(
                 "          {} has {} votes",
-                terrains[tied_terrain_indicies[idx]], vote_tallies[idx]
+                candidate_tallies[i].0.name, candidate_tallies[i].1[round as usize]
             );
         }
+        let min_votes = candidate_tallies
+            .iter()
+            .map(|x| x.1[round as usize])
+            .min()
+            .unwrap();
 
-        let min_votes = *vote_tallies.iter().min().unwrap();
-
-        // Remove terrains from tied list if there was a worse score.
-        let mut idx: i32 = 0;
-        while idx < tied_terrain_indicies.len() as i32 {
-            if vote_tallies[idx as usize] != min_votes {
-                tied_terrain_indicies.remove(idx as usize);
-                vote_tallies.remove(idx as usize);
-                idx -= 1;
-            }
-            idx += 1;
-        }
+        candidate_tallies.retain(|x| x.1[round as usize] == min_votes);
         round += 1;
     }
 }
@@ -311,25 +217,41 @@ pub fn loser_tie_breaker(
 ///
 ///  # Arguments
 ///
-/// * `terrains` - The list of remaining terrains.
+/// * `candidates` - The list of remaining candidates.
 /// * `numeric_entries` - The list of poll entries.
-pub fn show_tallies(terrains: &Vec<&str>, numeric_entries: &Vec<Vec<i32>>) {
+pub fn show_tallies(voters: &Vec<Voter>) {
     println!("  Primary Vote Tallies:");
-    for terrain_index in 0..terrains.len() {
-        let mut primary_votes: i32 = 0;
-        for entry in numeric_entries {
-            if entry[terrain_index] == 1 {
-                primary_votes += 1;
+    let candidate_tallies = get_candidate_tallies(&voters);
+    for (candidate, tallies) in candidate_tallies {
+        println!("      {}: {}", candidate.name, tallies[0]);
+    }
+}
+
+pub fn get_candidate_tallies(voters: &Vec<Voter>) -> Vec<(Rc<Candidate>, Vec<i32>)> {
+    let mut candidate_tallies: Vec<(Rc<Candidate>, Vec<i32>)> = Vec::new();
+
+    for voter in voters {
+        for i in 0..voter.votes.len() {
+            let vote = &voter.votes[i];
+            let index = candidate_tallies.iter().position(|x| x.0 == *vote);
+            if let Some(index) = index {
+                candidate_tallies[index].1[i] += 1;
+            } else {
+                let candidate = vote.clone();
+                let mut tallies: Vec<i32> = vec![0; voters.len()];
+                tallies[i] += 1;
+                candidate_tallies.push((candidate, tallies));
             }
         }
-        println!("      {}: {}", terrains[terrain_index], primary_votes);
     }
+
+    return candidate_tallies;
 }
 
 /// Extracts the number from a string.
 ///
 /// # Arguments
-/// 
+///
 /// * `entry` - The string to extract the number from.
 pub fn extract_number(entry: &str) -> i32 {
     let mut number = String::new();
