@@ -8,10 +8,7 @@ pub struct Voter {
 
 impl Voter {
     pub fn new(name: String, votes: Vec<Rc<Candidate>>) -> Voter {
-        Voter {
-            name,
-            votes,
-        }
+        Voter { name, votes }
     }
 
     pub fn vote(&mut self, candidate: Rc<Candidate>) {

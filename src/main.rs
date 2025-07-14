@@ -74,8 +74,10 @@ pub fn import_csv_poll(file_path: &str) -> Result<Vec<Voter>, String> {
         let header = result.to_owned();
         headers.push(header);
     }
+    // Remove non-candidate questions.
     headers.remove(0);
     headers.remove(0);
+    headers.pop();
     headers.pop();
 
     let mut candidates: Vec<Candidate> = Vec::new();
@@ -85,6 +87,7 @@ pub fn import_csv_poll(file_path: &str) -> Result<Vec<Voter>, String> {
         let split_header: Vec<&str> = header_string.split(|c| c == '[' || c == ']').collect();
         if split_header.len() > 1 {
             let candidate = Candidate::new(split_header[1]);
+            println!("{}", candidate.name);
             candidates.push(candidate);
         } else {
             return Err("CSV headers are not formatted correctly".to_string());
@@ -100,7 +103,9 @@ pub fn import_csv_poll(file_path: &str) -> Result<Vec<Voter>, String> {
             let answer = answer_string.to_owned();
             answers.push(answer);
         }
+        // Remove non-candidate answers.
         answers.remove(0);
+        answers.pop();
         answers.pop();
         let name = answers.remove(0);
         let mut votes: Vec<i32> = Vec::new();
