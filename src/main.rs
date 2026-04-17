@@ -78,7 +78,6 @@ pub fn import_csv_poll(file_path: &str) -> Result<Vec<Voter>, String> {
     headers.remove(0);
     headers.remove(0);
     headers.pop();
-    headers.pop();
 
     let mut candidates: Vec<Candidate> = Vec::new();
 
@@ -105,7 +104,6 @@ pub fn import_csv_poll(file_path: &str) -> Result<Vec<Voter>, String> {
         }
         // Remove non-candidate answers.
         answers.remove(0);
-        answers.pop();
         answers.pop();
         let name = answers.remove(0);
         let mut votes: Vec<i32> = Vec::new();
