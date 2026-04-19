@@ -1,6 +1,7 @@
 use candidate::Candidate;
 use rfd::FileDialog;
 use std::{fs::File, rc::Rc};
+use tabled::builder::Builder;
 use voter::Voter;
 
 mod candidate;
@@ -21,13 +22,18 @@ fn main() {
     }
 
     let mut voters = import_csv_poll(&poll_file).expect("Could not import poll");
+    let initial_order_tallies = get_candidate_tallies(&voters);
+    let initial_order_candidates: Vec<Rc<Candidate>> = initial_order_tallies
+        .iter()
+        .map(|(candidate, _)| Rc::clone(candidate))
+        .collect();
     let mut winner_found = false;
     // Perform a runoff eliminations until a majority winner is found
     let mut round_index: i32 = 1;
     while !winner_found && voters[0].votes.len() > 0 {
         println!("\nRound {}:", round_index);
         // Print the current primary votes for the current round.
-        show_tallies(&voters);
+        graph_tallies(&voters);
 
         // Check if a candidate has a majority of primary votes.
         let majority_result = check_for_majority(&voters);
@@ -35,7 +41,8 @@ fn main() {
         if majority_result == None {
             // No candidate has a majority vote, eliminate the candidate with the fewest primary votes.
             println!("  No Majority Winner,");
-            let removed_candidates = remove_last_place_candidate(&mut voters);
+            let removed_candidates =
+                remove_last_place_candidate(&mut voters, &initial_order_candidates);
             println!("  Removing Last Place Candidates:");
             for candidate in removed_candidates {
                 println!("      {}", candidate.name);
@@ -86,7 +93,6 @@ pub fn import_csv_poll(file_path: &str) -> Result<Vec<Voter>, String> {
         let split_header: Vec<&str> = header_string.split(|c| c == '[' || c == ']').collect();
         if split_header.len() > 1 {
             let candidate = Candidate::new(split_header[1]);
-            println!("{}", candidate.name);
             candidates.push(candidate);
         } else {
             return Err("CSV headers are not formatted correctly".to_string());
@@ -162,24 +168,33 @@ pub fn check_for_majority(voters: &Vec<Voter>) -> Option<Rc<Candidate>> {
 /// # Returns
 ///
 /// A vector of removed candidates.
-pub fn remove_last_place_candidate(voters: &mut Vec<Voter>) -> Vec<Rc<Candidate>> {
+pub fn remove_last_place_candidate(
+    voters: &mut Vec<Voter>,
+    initial_order_candidates: &Vec<Rc<Candidate>>,
+) -> Vec<Rc<Candidate>> {
     let candidate_tallies = get_candidate_tallies(voters);
-    let min_votes = candidate_tallies.iter().map(|x| x.1[0]).min().unwrap();
 
-    let mut tied_losers: Vec<(Rc<Candidate>, Vec<i32>)> = Vec::new();
-
-    // For each candidate, add it to the loser list if it is equal to the fewest
-    // number of primary votes received.
-    for (candidate, tallies) in candidate_tallies {
-        if tallies[0] == min_votes {
-            tied_losers.push((candidate, tallies));
+    // Get the last item from candidate_tallies. If it has the same values as items above it, add those to tied_losers as well.
+    let (last_candidate, last_tallies) = candidate_tallies.last().unwrap();
+    let mut tied_losers = vec![(last_candidate.clone(), last_tallies.clone())];
+    for (candidate, tallies) in &candidate_tallies[..candidate_tallies.len()] {
+        if tallies == last_tallies {
+            tied_losers.push((candidate.clone(), tallies.clone()));
         }
     }
 
-    // Enter into a loser tiebreaker if more than one loser exists.
+    // If losers are tied entirely, remove the one lower on the list of the initial vote set.
     if tied_losers.len() > 1 {
-        println!("  Entering Into Loser Tiebraker");
-        loser_tie_breaker(&mut tied_losers);
+        let max_loser = tied_losers
+            .iter()
+            .max_by_key(|(candidate, _)| {
+                initial_order_candidates
+                    .iter()
+                    .position(|c| c == candidate)
+                    .unwrap()
+            })
+            .cloned();
+        tied_losers = vec![max_loser.unwrap()];
     }
 
     // Remove the losing candidates from the voters' tallies.
@@ -194,50 +209,6 @@ pub fn remove_last_place_candidate(voters: &mut Vec<Voter>) -> Vec<Rc<Candidate>
     return removed_candidates;
 }
 
-/// Finds the candidates with the lowest number of subsequent votes and removes it
-/// from the candidates list.
-///
-///  # Arguments
-///
-/// * `candidate_tallies` - The list of candidates and their tallies.
-pub fn loser_tie_breaker(candidate_tallies: &mut Vec<(Rc<Candidate>, Vec<i32>)>) {
-    // In the event of a tie, find which has the fewest 2nd picks. If 2nd picks are a tie, go by 3rd pick, and so on.
-
-    // Go by rounds until only one loser exists.
-    // Each round corresponds to a vote tier. 0th round is primary vote, 1st round is secondary, 2nd round is tertiary, etc.
-    let mut round: i32 = 1;
-    while round < candidate_tallies[0].1.len() as i32 && candidate_tallies.len() > 1 {
-        println!("      Tiebreaker Round {}:", round);
-        for i in 0..candidate_tallies.len() {
-            println!(
-                "          {} has {} votes",
-                candidate_tallies[i].0.name, candidate_tallies[i].1[round as usize]
-            );
-        }
-        let min_votes = candidate_tallies
-            .iter()
-            .map(|x| x.1[round as usize])
-            .min()
-            .unwrap();
-
-        candidate_tallies.retain(|x| x.1[round as usize] == min_votes);
-        round += 1;
-    }
-}
-
-/// Prints the primary tallies for each candidate.
-///
-///  # Arguments
-///
-/// * `voters` - The list of voters to print the tallies from.
-pub fn show_tallies(voters: &Vec<Voter>) {
-    println!("  Primary Vote Tallies:");
-    let candidate_tallies = get_candidate_tallies(&voters);
-    for (candidate, tallies) in candidate_tallies {
-        println!("      {}: {}", candidate.name, tallies[0]);
-    }
-}
-
 /// Get the tallies for each candidate from the list of voters.
 ///
 /// # Arguments
@@ -246,7 +217,7 @@ pub fn show_tallies(voters: &Vec<Voter>) {
 ///
 /// # Returns
 ///
-/// A vector of tuples containing the candidate and their tallies.
+/// A vector of tuples containing the candidate and their tallies, ordered by favoritism.
 pub fn get_candidate_tallies(voters: &Vec<Voter>) -> Vec<(Rc<Candidate>, Vec<i32>)> {
     let mut candidate_tallies: Vec<(Rc<Candidate>, Vec<i32>)> = Vec::new();
 
@@ -258,13 +229,13 @@ pub fn get_candidate_tallies(voters: &Vec<Voter>) -> Vec<(Rc<Candidate>, Vec<i32
                 candidate_tallies[index].1[i] += 1;
             } else {
                 let candidate = vote.clone();
-                let mut tallies: Vec<i32> = vec![0; voters.len()];
+                let mut tallies: Vec<i32> = vec![0; voter.votes.len()];
                 tallies[i] += 1;
                 candidate_tallies.push((candidate, tallies));
             }
         }
     }
-
+    candidate_tallies.sort_by(|a, b| b.1.cmp(&a.1));
     return candidate_tallies;
 }
 
@@ -285,4 +256,27 @@ pub fn extract_number(entry: &str) -> i32 {
         }
     }
     return number.parse().unwrap();
+}
+
+pub fn graph_tallies(voters: &Vec<Voter>) {
+    let candidate_tallies = get_candidate_tallies(&voters);
+    let mut builder = Builder::default();
+
+    let num_rounds = candidate_tallies.len();
+    let mut header = vec!["Preference".to_string()];
+    for i in 1..=num_rounds {
+        header.push(format!("{}", i));
+    }
+    builder.push_record(&header);
+
+    for (candidate, tallies) in candidate_tallies {
+        let mut row = vec![candidate.name.clone()];
+        for tally in tallies {
+            row.push(tally.to_string());
+        }
+        builder.push_record(&row);
+    }
+
+    let table = builder.build();
+    println!("{}", table);
 }
