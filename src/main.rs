@@ -30,15 +30,18 @@ fn main() {
     let mut winner_found = false;
     // Perform a runoff eliminations until a majority winner is found
     let mut round_index: i32 = 1;
-    while !winner_found && voters[0].votes.len() > 0 {
+    while !winner_found && !voters[0].votes.is_empty() {
         println!("\nRound {}:", round_index);
         // Print the current primary votes for the current round.
         graph_tallies(&voters);
 
         // Check if a candidate has a majority of primary votes.
         let majority_result = check_for_majority(&voters);
-
-        if majority_result == None {
+        if let Some(result) = majority_result {
+            // Hussah, a candidate has a majority of primary votes!
+            winner_found = true;
+            println!("  Winner by Majority:\n      {}\n", result.name);
+        } else {
             // No candidate has a majority vote, eliminate the candidate with the fewest primary votes.
             println!("  No Majority Winner,");
             let removed_candidates =
@@ -47,13 +50,6 @@ fn main() {
             for candidate in removed_candidates {
                 println!("      {}", candidate.name);
             }
-        } else {
-            // Hussah, a candidate has a majority of primary votes!
-            winner_found = true;
-            println!(
-                "  Winner by Majority:\n      {}\n",
-                majority_result.unwrap().name
-            );
         }
         round_index += 1;
     }
@@ -90,7 +86,7 @@ pub fn import_csv_poll(file_path: &str) -> Result<Vec<Voter>, String> {
 
     // Gather all candidates from the CSV headers
     for header_string in headers {
-        let split_header: Vec<&str> = header_string.split(|c| c == '[' || c == ']').collect();
+        let split_header: Vec<&str> = header_string.split(['[', ']']).collect();
         if split_header.len() > 1 {
             let candidate = Candidate::new(split_header[1]);
             candidates.push(candidate);
@@ -129,7 +125,7 @@ pub fn import_csv_poll(file_path: &str) -> Result<Vec<Voter>, String> {
         voters.push(voter);
     }
 
-    return Ok(voters);
+    Ok(voters)
 }
 
 /// Checks if a candidate has a majority of primary votes.
@@ -142,7 +138,7 @@ pub fn import_csv_poll(file_path: &str) -> Result<Vec<Voter>, String> {
 ///
 /// The candidate with a majority of primary votes, or None if no candidate has a majority.
 pub fn check_for_majority(voters: &Vec<Voter>) -> Option<Rc<Candidate>> {
-    let candidate_tallies = get_candidate_tallies(&voters);
+    let candidate_tallies = get_candidate_tallies(voters);
 
     let most_primary_votes_index = candidate_tallies
         .iter()
@@ -153,9 +149,9 @@ pub fn check_for_majority(voters: &Vec<Voter>) -> Option<Rc<Candidate>> {
     let leader_vote_percentage: f32 = most_primary_votes as f32 / voters.len() as f32;
 
     if leader_vote_percentage > 0.5 {
-        return Some(candidate_tallies[most_primary_votes_index].0.clone());
+        Some(candidate_tallies[most_primary_votes_index].0.clone())
     } else {
-        return None;
+        None
     }
 }
 
@@ -170,7 +166,7 @@ pub fn check_for_majority(voters: &Vec<Voter>) -> Option<Rc<Candidate>> {
 /// A vector of removed candidates.
 pub fn remove_last_place_candidate(
     voters: &mut Vec<Voter>,
-    initial_order_candidates: &Vec<Rc<Candidate>>,
+    initial_order_candidates: &[Rc<Candidate>],
 ) -> Vec<Rc<Candidate>> {
     let candidate_tallies = get_candidate_tallies(voters);
 
@@ -206,7 +202,7 @@ pub fn remove_last_place_candidate(
 
     let removed_candidates: Vec<Rc<Candidate>> = tied_losers.iter().map(|x| x.0.clone()).collect();
 
-    return removed_candidates;
+    removed_candidates
 }
 
 /// Get the tallies for each candidate from the list of voters.
@@ -236,7 +232,7 @@ pub fn get_candidate_tallies(voters: &Vec<Voter>) -> Vec<(Rc<Candidate>, Vec<i32
         }
     }
     candidate_tallies.sort_by(|a, b| b.1.cmp(&a.1));
-    return candidate_tallies;
+    candidate_tallies
 }
 
 /// Extracts the number from a string.
@@ -255,11 +251,11 @@ pub fn extract_number(entry: &str) -> i32 {
             number.push(c);
         }
     }
-    return number.parse().unwrap();
+    number.parse().unwrap()
 }
 
 pub fn graph_tallies(voters: &Vec<Voter>) {
-    let candidate_tallies = get_candidate_tallies(&voters);
+    let candidate_tallies = get_candidate_tallies(voters);
     let mut builder = Builder::default();
 
     let num_rounds = candidate_tallies.len();
